@@ -103,6 +103,35 @@ inline void vec_quantized_matmul_int8(
   }
 }
 
+/// x: m * n, y: p * n, z: m * p, s: p * groups
+/// z[i][j] = sum(x[i][k] * y[j][k] * s[j][k/g])
+template <typename T, typename U = T, typename V = T>
+inline void vec_quantized_matmul_transb_int8(
+    T* __restrict__ z,
+    const U* __restrict__ x,
+    const int8_t* __restrict__ y,
+    const U* __restrict__ s,
+    int64_t m,
+    int64_t n,
+    int64_t p,
+    int64_t g) {
+  int64_t p_over_g = (p + g - 1) / g;
+
+  for (size_t i = 0; i < m; ++i) {
+    for (size_t j = 0; j < p; ++j) {
+      T sum = 0;
+      for (size_t k = 0; k < n; k += g) {
+        T psum = 0;
+        for (size_t k2 = k; k2 < k + g; k2++) {
+          psum += x[i * n + k2] * y[j * p + k2];
+        }
+        sum += psum * s[j * p_over_g + k / g];
+      }
+      z[i * p + j] = sum;
+    }
+  }
+}
+
 // mat1 (m x n), mat2 (n x p), out (m, p), self (m x p)
 // z[i][j] = sum(x[i][k] * y[k][j]), for k in range(n)
 // T for tensor dtype, U for scalar type
